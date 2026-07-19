@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-DEFAULT_MODEL = "grok-4-3"
+DEFAULT_MODEL = "Qwen3.7-Max"
 
 MODELS: dict[str, dict[str, str | int]] = {
     "grok-4-3": {
@@ -22,6 +22,12 @@ MODELS: dict[str, dict[str, str | int]] = {
         "endpoint_env_var": "AZURE_OPENAI_ENDPOINT",
         "api_key_env_var": "AZURE_OPENAI_API_KEY",
         "max_tokens": 512,
+    },
+    "Qwen3.7-Max": {
+        "deployment_name": "qwen3.7-max",
+        "endpoint_env_var": "QWEN_CLOUD_ENDPOINT",
+        "api_key_env_var": "QWEN_CLOUD_API_KEY",
+        "max_tokens": 4096,
     },
 }
 

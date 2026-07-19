@@ -31,7 +31,7 @@ def normalize_foundry_base_url(endpoint: str) -> str:
 
 
 def use_foundry_v1(endpoint: str) -> bool:
-    mode = os.environ.get("AZURE_OPENAI_API_MODE", "").strip().lower()
+    mode = os.environ.get("API_MODE", "").strip().lower()
     if mode in {"foundry_v1", "foundry", "v1"}:
         return True
     return "services.ai.azure.com" in endpoint

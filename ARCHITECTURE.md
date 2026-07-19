@@ -7,8 +7,8 @@ Within the WendScope Labs ecosystem, KAAAGLUMN sits at the coordination layer al
 ## 2. File Responsibilities
 
 - **`chat.py`** — Primary entrypoint for both CLI and REPL operation. Manages session lifecycle, command parsing, message persistence, and the streaming response loop. Contains the `KAAAGLUMN_SYSTEM_PROMPT` constant (~7,900 characters, ~1,975 tokens) that defines KAAAGLUMN's identity, voice, and analytical stance. Implements slash command handlers (`list_sessions`, `_repl_switch`, `_repl_label`, `show_history`, `_run_tool_turn`, `_parse_tool_command`) and CLI flag handlers (`--new`, `--session`, `--label`, `--oneshot`, `--history`, `--sessions`). Creates and maintains the `messages` and `sessions` tables in `orchestrator.db`. Depends on `models.py` and `foundry_client.py`.
-- **`foundry_client.py`** — Single choke point for all model API calls. Determines whether to use the OpenAI-compatible client path or the AzureOpenAI client path based on the `AZURE_OPENAI_API_MODE` environment variable and endpoint characteristics. Exposes `load_env()`, `require_env()`, `normalize_foundry_base_url()`, `use_foundry_v1()`, and `get_client()`. Reads endpoint and API key values from environment variables referenced in the model registry. Called by `chat.py` and `call_foundry.py`; does not call back into either.
-- **`models.py`** — Model registry and configuration. Defines the `MODELS` dictionary mapping registry keys to configuration entries. Each entry specifies `deployment_name`, `endpoint_env_var`, `api_key_env_var`, and `max_tokens`. Sets `DEFAULT_MODEL`. Exposes `get_model(model_name)` and `deployment_name(model_name)`. Currently registers `grok-4-3`, `Kimi-K2.6`, and `DeepSeek-V4-Flash`. Imported by `chat.py` and `foundry_client.py`.
+- **`foundry_client.py`** — Single choke point for all model API calls. Determines whether to use the OpenAI-compatible client path or the AzureOpenAI client path based on the `API_MODE` environment variable and endpoint characteristics. Exposes `load_env()`, `require_env()`, `normalize_foundry_base_url()`, `use_foundry_v1()`, and `get_client()`. Reads endpoint and API key values from environment variables referenced in the model registry. Called by `chat.py` and `call_foundry.py`; does not call back into either.
+- **`models.py`** — Model registry and configuration. Defines the `MODELS` dictionary mapping registry keys to configuration entries. Each entry specifies `deployment_name`, `endpoint_env_var`, `api_key_env_var`, and `max_tokens`. Sets `DEFAULT_MODEL`. Exposes `get_model(model_name)` and `deployment_name(model_name)`. Currently registers `grok-4-3`, `Kimi-K2.6`, `DeepSeek-V4-Flash`, and `Qwen3.7-Max`. Imported by `chat.py` and `foundry_client.py`.
 - **`call_foundry.py`** — Diagnostic one-shot tool. Executes a single Azure AI Foundry / Azure OpenAI chat call with no startup banner, useful for verifying model connectivity outside the REPL. Defines `ONESHOT_MAX_TOKENS = 128` and `call_foundry(prompt, model_name)`. Provides its own `main()` with `argparse` support for `--dry-run` and a positional prompt argument. Imports `get_client`, `load_env`, and `require_env` from `foundry_client.py` and `DEFAULT_MODEL`, `deployment_name` from `models.py`.
 - **`.env.example`** — Template documenting required environment variables. Must be copied to `.env` before first run. The `.env` file is gitignored.
 - **`.gitignore`** — Excludes `.env`, `*.db`, `*.db-journal`, `.venv/`, `__pycache__/`, editor config directories, and scratch file patterns (`_diff*`, `_apply*`, `_build*`).
@@ -91,7 +91,7 @@ _parse_tool_command(prompt: str)  # no return type annotation
 call_foundry(prompt: str, model_name: str = DEFAULT_MODEL) -> str
 ```
 
-### `AZURE_OPENAI_API_MODE` toggle behavior
+### `API_MODE` toggle behavior
 
 Read in `use_foundry_v1(endpoint: str) -> bool`. Determines client construction path in `get_client()`:
 
@@ -117,7 +117,9 @@ The following environment variables are read by the codebase.
 | `AZURE_OPENAI_API_KEY` | `foundry_client.get_client()` via model registry | Shared API key for Azure Foundry-deployed models. |
 | `AZURE_OPENAI_DEPLOYMENT` | `.env.example` template only | Documented as example; the actual deployment name is resolved from the model registry per model. |
 | `AZURE_OPENAI_API_VERSION` | `foundry_client.get_client()` | API version for `AzureOpenAI` client construction. Defaults to `"2024-08-01-preview"` if not set. |
-| `AZURE_OPENAI_API_MODE` | `foundry_client.use_foundry_v1()` | Toggles between Foundry v1 (OpenAI-compatible) and legacy AzureOpenAI client construction. Accepts `foundry_v1`, `foundry`, or `v1` (case-insensitive). Falls back to endpoint-based detection when unset. |
+| `API_MODE` | `foundry_client.use_foundry_v1()` | Toggles between Foundry v1 (OpenAI-compatible) and legacy AzureOpenAI client construction. Accepts `foundry_v1`, `foundry`, or `v1` (case-insensitive). Falls back to endpoint-based detection when unset. |
+| `QWEN_CLOUD_ENDPOINT` | `foundry_client.get_client()` via model registry | Endpoint URL for Alibaba Model Studio (Qwen3.7-Max). |
+| `QWEN_CLOUD_API_KEY` | `foundry_client.get_client()` via model registry | API key for Alibaba Model Studio (Qwen3.7-Max). |
 
 ### `.env.example` template values
 
@@ -125,15 +127,17 @@ The following environment variables are read by the codebase.
 AZURE_OPENAI_ENDPOINT=https://wendscopelabs-8267-resource.services.ai.azure.com/
 AZURE_OPENAI_API_KEY=your-key-here
 AZURE_OPENAI_DEPLOYMENT=DeepSeek-V4-Flash
-# AZURE_OPENAI_API_MODE=foundry_v1
+# API_MODE=foundry_v1
 AZURE_OPENAI_API_VERSION=2024-08-01-preview
+QWEN_CLOUD_ENDPOINT=https://ws-chs0atu7f5rtuool.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1
+QWEN_CLOUD_API_KEY=your_api_key_here
 ```
 
-The `AZURE_OPENAI_API_MODE` line is commented out by default. Uncomment when using Foundry v1 endpoints where automatic detection may not apply.
+The `API_MODE` line is commented out by default. Uncomment when using Foundry v1 endpoints where automatic detection may not apply.
 
-### Naming inconsistency flag
+### Cross-cutting toggle naming
 
-The `AZURE_OPENAI_API_MODE` variable controls behavior that applies to *any* OpenAI-compatible endpoint, not just Azure. The `AZURE_OPENAI_` prefix is therefore misleading. The toggle applies equally to Alibaba Model Studio, OpenRouter, or any other OpenAI-compatible provider. This variable is scheduled for rename to `API_MODE` (or similar) as part of a separate naming rework. Section 5 formalizes the convention that determines the new name. This section should be updated after the rework.
+`API_MODE` (formerly `AZURE_OPENAI_API_MODE`) controls behavior that applies to any OpenAI-compatible endpoint, not just Azure — Alibaba Model Studio, OpenRouter, or any other OpenAI-compatible provider. Cross-cutting behavior toggles do not carry a vendor prefix for this reason, per the convention in Section 5.
 
 ## 5. Naming Conventions
 
@@ -162,7 +166,7 @@ The following conventions govern how new files, functions, variables, environmen
 Environment variables use `UPPER_SNAKE_CASE`. Prefix convention distinguishes between:
 
 - **Vendor-specific credentials**: use the vendor name as the prefix. Examples: `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `QWEN_CLOUD_ENDPOINT`, `QWEN_CLOUD_API_KEY`. These variables hold values that only make sense in the context of that vendor's account.
-- **Cross-cutting behavior toggles**: do NOT use a vendor prefix even when the toggle was originally introduced for a single vendor. The behavior applies broadly to any provider matching the pattern. Example: the current `AZURE_OPENAI_API_MODE` variable is scheduled for rename to `API_MODE` because the toggle applies to any OpenAI-compatible endpoint, not just Azure.
+- **Cross-cutting behavior toggles**: do NOT use a vendor prefix even when the toggle was originally introduced for a single vendor. The behavior applies broadly to any provider matching the pattern. Example: `AZURE_OPENAI_API_MODE` was renamed to `API_MODE` because the toggle applies to any OpenAI-compatible endpoint, not just Azure.
 - **Version and configuration values that are provider-specific**: keep the vendor prefix. Example: `AZURE_OPENAI_API_VERSION` is Azure-specific and correctly named.
 
 **Rule:** if a variable controls behavior that only applies to one vendor, use the vendor prefix. If a variable controls behavior that could apply to any vendor of a given type (e.g., any OpenAI-compatible provider), do not use a vendor prefix.
@@ -357,7 +361,7 @@ Required fields: `deployment_name`, `endpoint_env_var`, `api_key_env_var`, `max_
 
 To make the new model the default host, update `DEFAULT_MODEL` in `models.py`. To make it available only as a tool, leave `DEFAULT_MODEL` unchanged; users can then invoke it with `/tool <ModelKey> <prompt>`.
 
-If the new model's endpoint is not on Azure Foundry (does not contain `services.ai.azure.com`), the operator must set `AZURE_OPENAI_API_MODE=foundry_v1` in `.env` to force the OpenAI-compatible client path. (This variable is scheduled for rename to `API_MODE` per Section 5.)
+If the new model's endpoint is not on Azure Foundry (does not contain `services.ai.azure.com`), the operator must set `API_MODE=foundry_v1` in `.env` to force the OpenAI-compatible client path.
 
 No other files require modification for basic model support. The `check_env` helper in `chat.py` reads the endpoint and api key env vars automatically once the registry entry is present.
 
@@ -413,7 +417,7 @@ Follow the prefix conventions in Section 5:
 - Add the variable and an example value to `.env.example`
 - Document the variable in Section 4 of this document
 
-Environment variables are read in three places. `foundry_client.py` reads values needed for client construction (`AZURE_OPENAI_API_MODE`, `AZURE_OPENAI_API_VERSION`, and the endpoint/api-key values referenced by name in the model registry). `chat.py`'s `check_env` helper reads env-var presence via the model registry to detect missing configuration. `call_foundry.py` reads `AZURE_OPENAI_API_KEY` directly for diagnostic display purposes. Whether the separation reflects a deliberate design choice or historical accumulation is undocumented; consolidation to a single source of truth may or may not be warranted depending on that intent.
+Environment variables are read in three places. `foundry_client.py` reads values needed for client construction (`API_MODE`, `AZURE_OPENAI_API_VERSION`, and the endpoint/api-key values referenced by name in the model registry). `chat.py`'s `check_env` helper reads env-var presence via the model registry to detect missing configuration. `call_foundry.py` reads `AZURE_OPENAI_API_KEY` directly for diagnostic display purposes. Whether the separation reflects a deliberate design choice or historical accumulation is undocumented; consolidation to a single source of truth may or may not be warranted depending on that intent.
 
 ### Adding a new file
 
